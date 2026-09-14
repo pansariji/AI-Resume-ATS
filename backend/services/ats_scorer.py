@@ -1,9 +1,11 @@
 import re
 import spacy
+import numpy as np
+from sentence_transformers import SentenceTransformer
+from typing import Dict, List, Optional, Tuple
 
 from backend.utils.file_utils import log_warning
-from backend.core.config import SPACY_MODEL_PRIMARY
-from backend.utils.matching import fuzzy_match_keywords, compute_text_similarity
+from backend.core.config import SENTENCE_TRANSFORMER_MODEL
 from backend.utils.matching import fuzzy_match_keywords
 
 ZIP_CODE_PATTERN = r'\b\d{5}(?:-\d{4})?\b'
@@ -70,14 +72,31 @@ def detect_location_info(text: str, nlp: spacy.Language) -> Dict:
         'penalty_applied':    penalty,
     }
 
-def _skill_matches(skill: str, text: str, threshold: float) -> Tuple[bool, float]:
+def _calculate_semantic_similarity(skill: str, text: str, embedder: SentenceTransformer) -> float:
+    #similarity = (A · B) / (|A| × |B|)
+    if not skill or not text:
+        return 0.0
+    try:
+        skill_vec  = embedder.encode(skill, convert_to_tensor=False)
+        text_vec   = embedder.encode(text,  convert_to_tensor=False)
+
+        similarity = np.dot(skill_vec, text_vec) / (
+            np.linalg.norm(skill_vec) * np.linalg.norm(text_vec)
+        )
+
+        return float(max(0.0, min(1.0, similarity)))
+    except Exception as e:
+        log_warning(f"Similarity error for '{skill}': {e}", context='ats_scorer')
+        return 0.0
+
+def _skill_matches(skill: str, text: str, embedder: SentenceTransformer, threshold: float) -> Tuple[bool, float]:
 
     #fast, o(n) directly check if skill is a substring of the text (case-insensitive)
     if skill.lower() in text.lower():
         return True, 1.0
     
-    #slow, semantic similarity check
-    sim = compute_text_similarity(skill, text)
+    #slow, semantic similarity check using sentence embeddings
+    sim = _calculate_semantic_similarity(skill, text, embedder)
     return sim >= threshold, sim
 
 #Skill validation
@@ -85,6 +104,7 @@ def validate_skills_with_projects(
     skills: List[str],
     projects: List[Dict],
     experience_entries: List[Dict],
+    embedder: SentenceTransformer,
     threshold: float = 0.6,
 ) -> Dict:
     
@@ -113,14 +133,14 @@ def validate_skills_with_projects(
 
         for project in projects:
             project_text = f"{project.get('title', '')} {project.get('description', '')}"
-            matched, sim = _skill_matches(skill, project_text, threshold)
+            matched, sim = _skill_matches(skill, project_text, embedder, threshold)
             max_similarity = max(max_similarity, sim)
 
             if matched:
                 matching_projects.append(project.get('title', 'Untitled Project'))
 
         if experience_text:
-            matched, sim = _skill_matches(skill, experience_text, threshold)
+            matched, sim = _skill_matches(skill, experience_text, embedder, threshold)
             max_similarity = max(max_similarity, sim)
             if matched and 'Experience Section' not in matching_projects:
                 matching_projects.append('Experience Section')
