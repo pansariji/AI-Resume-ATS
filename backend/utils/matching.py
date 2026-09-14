@@ -68,3 +68,25 @@ def fuzzy_match_keywords(
         'matched': sorted(matched_jd_originals),
         'missing': missing_jd_originals,
     }
+
+
+def compute_text_similarity(text1: str, text2: str) -> float:
+    import math
+    import re
+    from collections import Counter
+    if not text1 or not text2:
+        return 0.0
+        
+    vec1 = Counter(re.findall(r'\w+', text1.lower()))
+    vec2 = Counter(re.findall(r'\w+', text2.lower()))
+    
+    intersection = set(vec1.keys()) & set(vec2.keys())
+    numerator = sum([vec1[x] * vec2[x] for x in intersection])
+    
+    sum1 = sum([vec1[x]**2 for x in list(vec1.keys())])
+    sum2 = sum([vec2[x]**2 for x in list(vec2.keys())])
+    denominator = math.sqrt(sum1) * math.sqrt(sum2)
+    
+    if not denominator: 
+        return 0.0
+    return float(numerator) / denominator
