@@ -8,14 +8,17 @@ from groq import Groq
 logger=logging.getLogger('ats_resume_scorer')
 
 
-GROQ_MODEL='llama-3.3-70b-versatile'
+GROQ_MODEL = os.getenv('GROQ_MODEL', 'qwen/qwen3.8-27b')
+FALLBACK_MODELS = ['qwen/qwen3.8-27b', 'openai/gpt-oss-120b', 'groq/compound-mini']
+
+from backend.core.config import GROQ_API_KEY
 
 _client=None
 
 def _get_client()->Groq:
     global _client
     if _client is None:
-        api_key=os.getenv('GROQ_API_KEY')
+        api_key = GROQ_API_KEY or os.getenv('GROQ_API_KEY')
 
         if not api_key:
             raise ValueError("GROQ_API_KEY environment variable not set")
@@ -38,12 +41,12 @@ RESUME_USER_PROMPT = """Extract the following from this resume and return as JSO
   "skills": ["list", "of", "skills"],
   "experience": [
     {{
-      "job_title": "",
-      "company": "",
-      "start_date": "",
-      "end_date": "",
+      "job_title": "job title",
+      "company": "company name",
+      "start_date": "start date (e.g. Jun 2021)",
+      "end_date": "end date (e.g. Present)",
       "duration_months": 0,
-      "description": ""
+      "description": "job description"
     }}
   ],
   "education": [
@@ -76,18 +79,27 @@ Resume Text:
 {raw_text}"""
 
 def _call_groq(client:Groq, system_prompt:str, user_prompt:str)->str:
-
-    response=client.chat.completions.create(
-        model=GROQ_MODEL, 
-        messages=[
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': user_prompt}
-        ],
-        temperature=0.0,
-        max_tokens=4096
-    )
-
-    return response.choices[0].message.content.strip()
+    models_to_try = [GROQ_MODEL] + [m for m in FALLBACK_MODELS if m != GROQ_MODEL]
+    last_err = None
+    for model in models_to_try:
+        try:
+            response=client.chat.completions.create(
+                model=model, 
+                messages=[
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user', 'content': user_prompt}
+                ],
+                temperature=0.0,
+                max_tokens=4096
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            last_err = e
+            logger.warning(f"Groq model {model} failed: {e}. Trying next available model...")
+            continue
+    if last_err is not None:
+        raise last_err
+    raise RuntimeError("No Groq models available to process request")
 
 def _try_parse_json(text: str) -> dict | None:
 
