@@ -1,14 +1,49 @@
-.DS_Store
-
+# Byte-compiled / optimized / DLL files
 __pycache__/
+*.py[cod]
+*$py.class
 
+# Environments & Virtual Envs
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
 
-# Datasets
+# Environment Variables & Secrets (CRITICAL: NEVER COMMIT SECRETS)
+.env
+.env.local
+.env.*.local
+*.env
+!*.env.example
+secrets.toml
+frontend/.streamlit/secrets.toml
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Datasets & ML Models
 *.csv
+*.safetensors
+*.pkl
+*.bin
+*.pt
+*.pth
+*.onnx
 
 # Logs
 *.log
+logs/
 
-# ML models
-*.safetensors
-*.pkl
+# IDE & Editor Settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# WeasyPrint / temp exports
+*.pdf
+scratch/
